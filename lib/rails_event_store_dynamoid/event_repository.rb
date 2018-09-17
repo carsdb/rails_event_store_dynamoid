@@ -1,0 +1,3 @@
+class RailsEventStoreDynamoid::EventRepository
+
+end
