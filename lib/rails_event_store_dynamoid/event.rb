@@ -5,17 +5,17 @@ module RailsEventStoreDynamoid
   class Event
     include Dynamoid::Document
 
-    # table name: "#{Dynamoid.config.namespace}_events"
+    table id: :event_id
+    range :stream, :string
 
-    field :stream, :string
     field :event_type, :string
     field :meta, :raw
     field :data, :raw
 
     field :position, :integer
 
-    global_secondary_index hash_key: :stream, range_key: :created_at
-    global_secondary_index hash_key: :stream
+    global_secondary_index hash_key: :stream, projected_attributes: :all
+    # global_secondary_index hash_key: :stream, range_key: :created_at
 
     before_save :sanitize_raw_fields
 

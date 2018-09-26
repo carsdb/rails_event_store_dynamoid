@@ -33,14 +33,12 @@ module RailsEventStoreDynamoid
       else
       end
 
-      stream.map(&method(:build_event_entity)).each
+      stream.map(&method(:build_event_instance)).each
     end
 
     def append_to_stream(events, stream, expected_version)
-      add_to_stream(normalize_to_array(events), stream, expected_version, true) do |event|
-        build_event_record(event).save!
-        event.event_id
-      end
+      add_to_stream(normalize_to_array(events), stream, expected_version, true)
+
       self
     end
 
@@ -74,7 +72,7 @@ module RailsEventStoreDynamoid
 
     private
 
-    def add_to_stream(collection, stream, expected_version, include_global, &to_event_id)
+    def add_to_stream(collection, stream, expected_version, include_global)
       # FIXME: There's no order given here to actually get the last position
       last_stream_version = -> (stream_) { Event.where(stream: stream_.name).first.try(:position) }
       resolved_version = expected_version.resolve_for(stream, last_stream_version)
@@ -82,33 +80,50 @@ module RailsEventStoreDynamoid
       # Transaction starts
       in_stream = collection.flat_map.with_index do |element, index|
         position = compute_position(resolved_version, index)
-        event_id = to_event_id.call(element)
+
         collection = []
-        collection.unshift({
-          stream: SERIALIZED_GLOBAL_STREAM_NAME,
-          position: nil,
-          event_id: event_id,
-        }) if include_global
-        collection.unshift({
-          stream: stream.name,
-          position: position,
-          event_id: event_id
-        }) unless stream.global?
+
+        if include_global
+          collection << build_event_record(element, SERIALIZED_GLOBAL_STREAM_NAME, nil).serializable_hash
+        end
+
+        unless stream.global?
+          collection << build_event_record(element, stream.name, position).serializable_hash
+        end
         collection
       end
 
       Event.import(in_stream)
-      # Transaction ends
 
       self
     end
 
-    def build_event_record(serialized_record)
+    def build_event_instance(dynamoid_record)
+      RubyEventStore::SerializedRecord.new(
+        event_id:   dynamoid_record.id,
+        metadata:   dynamoid_record.meta,
+        data:       dynamoid_record.data,
+        event_type: dynamoid_record.event_type,
+      )
+    end
+
+    def build_event_record(serialized_record, stream, position)
       Event.new(
-        id:         serialized_record.event_id,
+        id:   serialized_record.event_id,
+        stream:     stream,
+        position:   position,
         data:       serialized_record.data,
         meta:       serialized_record.metadata,
         event_type: serialized_record.event_type
+      )
+    end
+
+    def build_event_entity(record)
+      return nil unless record
+      record.event_type.constantize.new(
+        event_id: record.event_id,
+        metadata: record.meta,
+        data: record.data,
       )
     end
 
@@ -121,15 +136,6 @@ module RailsEventStoreDynamoid
       unless resolved_version.nil?
         resolved_version + index + POSITION_SHIFT
       end
-    end
-
-    def build_event_entity(record)
-      return nil unless record
-      record.event_type.constantize.new(
-        event_id: record.event_id,
-        metadata: record.meta,
-        data: record.data,
-      )
     end
 
     def normalize_stream_name(specification)
