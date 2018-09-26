@@ -10,7 +10,6 @@ module RailsEventStoreDynamoid
     end
 
     def create(event, stream_name)
-      byebug
       adapter.create(
         stream:     stream_name,
         id:         event.event_id,
@@ -34,7 +33,6 @@ module RailsEventStoreDynamoid
       else
       end
 
-      byebug
       stream.map(&method(:build_event_entity)).each
     end
 
@@ -98,7 +96,7 @@ module RailsEventStoreDynamoid
         }) unless stream.global?
         collection
       end
-      byebug
+
       Event.import(in_stream)
       # Transaction ends
 
