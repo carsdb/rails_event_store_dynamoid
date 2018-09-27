@@ -145,5 +145,14 @@ describe RailsEventStoreDynamoid::Event do
         expect(backward_result.map(&:event_id)).to eq([event2, event1, event0].map(&:event_id))
       end
     end
+
+    context 'global stream' do
+      it "can query global events" do
+        repository.append_to_stream(event = SRecord.new, stream, version_none)
+
+        spec = specification.from(:head).limit(1).result
+        expect(subject.read(spec).first).to eq(event)
+      end
+    end
   end
 end

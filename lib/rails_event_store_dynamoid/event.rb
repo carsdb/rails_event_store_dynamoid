@@ -13,7 +13,7 @@ module RailsEventStoreDynamoid
 
     field :position, :integer
 
-    # global_secondary_index hash_key: :stream, projected_attributes: :all
+    global_secondary_index hash_key: :stream, range_key: :created_at, projected_attributes: :all
     global_secondary_index hash_key: :stream, range_key: :position, projected_attributes: :all
 
     before_save :sanitize_raw_fields

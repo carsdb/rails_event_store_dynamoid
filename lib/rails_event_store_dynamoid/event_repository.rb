@@ -84,11 +84,16 @@ module RailsEventStoreDynamoid
     private
 
     def add_to_stream(collection, stream, expected_version, include_global)
-      # FIXME: There's no order given here to actually get the last position
-      last_stream_version = -> (stream_) { Event.where(stream: stream_.name).first.try(:position) }
+      last_stream_version = -> (stream_) do
+        Event
+          .where(stream: stream_.name)
+          .scan_index_forward(false)
+          .first
+          .try(:position)
+      end
       resolved_version = expected_version.resolve_for(stream, last_stream_version)
 
-      # Transaction starts
+
       in_stream = collection.flat_map.with_index do |element, index|
         position = compute_position(resolved_version, index)
 
@@ -99,6 +104,7 @@ module RailsEventStoreDynamoid
         end
 
         unless stream.global?
+          raise RubyEventStore::WrongExpectedEventVersion if expected_version_exists? stream.name, position
           collection << build_event_record_hash(element, stream.name, position)
         end
         collection
@@ -142,6 +148,10 @@ module RailsEventStoreDynamoid
 
     def normalize_stream_name(specification)
       specification.global_stream? ? SERIALIZED_GLOBAL_STREAM_NAME : specification.stream_name
+    end
+
+    def expected_version_exists?(stream_name, expected_version)
+      Event.where(stream: stream_name, position: expected_version).count > 0
     end
   end
 end
