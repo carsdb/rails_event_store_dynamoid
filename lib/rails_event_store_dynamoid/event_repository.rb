@@ -48,16 +48,20 @@ module RailsEventStoreDynamoid
       self
     end
 
-    def delete_stream(stream_name)
-      adapter.where(stream: stream_name).delete_all
+    def delete_stream(stream)
+      adapter.where(stream: stream.name).delete_all
     end
 
     def has_event?(event_id)
       adapter.where(id: event_id).count > 0
     end
 
-    def last_stream_event(stream_name)
-      build_event_entity(adapter.where(stream: stream_name).desc(:created_at).first)
+    def last_stream_event(stream)
+      record = adapter
+        .where(stream: stream.name)
+        .scan_index_forward(false)
+        .first
+      build_event_instance(record)
     end
 
     def read_events_forward(stream_name, start_event_id, count)
@@ -67,18 +71,16 @@ module RailsEventStoreDynamoid
         stream = stream.start(starting_event)
       end
 
-      # FIXME: order by ascending timestamp
       stream.record_limit(count)
         .map(&method(:build_event_entity))
     end
 
-    def build_event_instance(dynamoid_record)
-      RubyEventStore::SerializedRecord.new(
-        event_id:   dynamoid_record.id,
-        metadata:   dynamoid_record.meta,
-        data:       dynamoid_record.data,
-        event_type: dynamoid_record.event_type,
-      )
+    def read_event(event_id)
+      if record = adapter.where(id: event_id).first
+        build_event_instance(record)
+      else
+        raise RubyEventStore::EventNotFound.new(event_id)
+      end
     end
 
     private
@@ -105,6 +107,7 @@ module RailsEventStoreDynamoid
 
         unless stream.global?
           raise RubyEventStore::WrongExpectedEventVersion if expected_version_exists? stream.name, position
+          raise RubyEventStore::EventDuplicatedInStream if adapter.has_duplicate?(element, stream.name, include_global)
           collection << build_event_record_hash(element, stream.name, position)
         end
         collection
@@ -124,6 +127,16 @@ module RailsEventStoreDynamoid
         meta:       serialized_record.metadata,
         event_type: serialized_record.event_type
       }
+    end
+
+    def build_event_instance(dynamoid_record)
+      return nil unless dynamoid_record
+      RubyEventStore::SerializedRecord.new(
+        event_id:   dynamoid_record.id,
+        metadata:   dynamoid_record.meta,
+        data:       dynamoid_record.data,
+        event_type: dynamoid_record.event_type,
+      )
     end
 
     def build_event_entity(record)

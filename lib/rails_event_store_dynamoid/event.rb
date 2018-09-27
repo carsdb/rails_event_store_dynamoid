@@ -27,10 +27,22 @@ module RailsEventStoreDynamoid
       stream = stream.scan_index_forward(spec.direction == :forward)
 
       if spec.batched?
+        # # Do some maintenance on the entire table without flooding DynamoDB
+        # Address.all(batch_size: 100).each { |address| address.do_some_work; sleep(0.01) }
+        # Address.record_limit(10_000).batch(100).each { … } # Batch specified as part of a chain
         # FIXME
+        # batch_read = -> (offset, limit) { stream.record_limit(limit). }
         stream.map(&method(:build_event_instance)).each
       else
         stream.map(&method(:build_event_instance)).each
+      end
+    end
+
+    def self.has_duplicate?(serialized_record, stream_name, linking_event_to_another_stream)
+      if linking_event_to_another_stream
+        Event.where(id: serialized_record.event_id).count > 1
+      else
+        Event.where(id: serialized_record.event_id, stream: stream_name).count > 0
       end
     end
 
@@ -54,11 +66,21 @@ module RailsEventStoreDynamoid
     def self.start_condition(spec)
       event_record = Event.find(spec.start, range_key: normalize_stream_name(spec), consistent_read: true)
 
+      attribute, value = '', ''
+
+      if spec.global_stream?
+        attribute = 'created_at'
+        value = event_record.created_at
+      else
+        attribute = 'position'
+        value = event_record.position
+      end
+
       case spec.direction
       when :forward
-        {'position.gt': event_record.position}
+        {"#{attribute}.gt": value}
       else
-        {'position.lt': event_record.position}
+        {"#{attribute}.lt": value}
       end
     end
 
