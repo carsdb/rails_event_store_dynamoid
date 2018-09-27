@@ -27,12 +27,20 @@ module RailsEventStoreDynamoid
       stream = stream.scan_index_forward(spec.direction == :forward)
 
       if spec.batched?
-        # # Do some maintenance on the entire table without flooding DynamoDB
-        # Address.all(batch_size: 100).each { |address| address.do_some_work; sleep(0.01) }
-        # Address.record_limit(10_000).batch(100).each { … } # Batch specified as part of a chain
-        # FIXME
-        # batch_read = -> (offset, limit) { stream.record_limit(limit). }
-        stream.map(&method(:build_event_instance)).each
+        batch_reader = -> (offset_condition, limit) do
+          last_created_at = nil
+
+          result = stream
+            .where(offset_condition)
+            .record_limit(limit)
+            .map do |event_|
+              last_created_at = event_.created_at
+              build_event_instance(event_)
+            end
+
+          [result, last_created_at]
+        end
+        RailsEventStoreDynamoid::BatchEnumerator.new(spec.batch_size, spec, batch_reader).each
       else
         stream.map(&method(:build_event_instance)).each
       end
