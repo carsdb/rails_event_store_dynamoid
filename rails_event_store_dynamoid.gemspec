@@ -33,7 +33,7 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "pry"
   spec.add_development_dependency "rspec"
 
-  spec.add_dependency 'dynamoid', '>= 2.2.0'
   spec.add_dependency 'ruby_event_store', '~> 0.31.1'
   spec.add_dependency 'rails_event_store', '~> 0.31.1'
+  spec.add_dependency 'dynamoid', '>= 3.0.0'
 end

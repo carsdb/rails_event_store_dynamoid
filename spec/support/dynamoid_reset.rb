@@ -15,4 +15,4 @@ module DynamoidReset
 end
 
 # Reduce noice in test output
-# Dynamoid.logger.level = LOGGER::FATAL
+Dynamoid.logger.level = Logger::DEBUG

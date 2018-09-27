@@ -21,19 +21,7 @@ module RailsEventStoreDynamoid
     end
 
     def read(spec)
-      raise RubyEventStore::ReservedInteralName if spec.stream_name.eql?(EventRepository::SERIALIZED_GLOBAL_STREAM_NAME)
-
-      stream = Event.where(stream: normalize_stream_name(spec))
-      # FIXME stream = stream.order(position: order(spec.direction)) unless spec.global_stream?
-      stream = stream.record_limit(spec.count) if spec.limit?
-      stream = stream.where(start_condition(spec)) unless spec.head?
-      # FIXME stream = stream.order(id: order(spec.direction))
-
-      if spec.batched?
-      else
-      end
-
-      stream.map(&method(:build_event_instance)).each
+      adapter.read(spec)
     end
 
     def append_to_stream(events, stream, expected_version)
@@ -43,6 +31,20 @@ module RailsEventStoreDynamoid
     end
 
     def link_to_stream(event_ids, stream, expected_version)
+      normalized_event_ids = normalize_to_array(event_ids)
+      found_events = []
+      normalized_event_ids.each do |event_id|
+        if event = Event.where(id: event_id).first
+          found_events << build_event_instance(event)
+        end
+      end
+
+      (normalized_event_ids - found_events.map(&:event_id)).each do |id|
+        raise RubyEventStore::EventNotFound.new(id)
+      end
+
+      add_to_stream(found_events, stream, expected_version, nil)
+
       self
     end
 
@@ -51,7 +53,7 @@ module RailsEventStoreDynamoid
     end
 
     def has_event?(event_id)
-      !adapter.find_by_id(event_id).nil?
+      adapter.where(id: event_id).count > 0
     end
 
     def last_stream_event(stream_name)
@@ -70,6 +72,15 @@ module RailsEventStoreDynamoid
         .map(&method(:build_event_entity))
     end
 
+    def build_event_instance(dynamoid_record)
+      RubyEventStore::SerializedRecord.new(
+        event_id:   dynamoid_record.id,
+        metadata:   dynamoid_record.meta,
+        data:       dynamoid_record.data,
+        event_type: dynamoid_record.event_type,
+      )
+    end
+
     private
 
     def add_to_stream(collection, stream, expected_version, include_global)
@@ -84,11 +95,11 @@ module RailsEventStoreDynamoid
         collection = []
 
         if include_global
-          collection << build_event_record(element, SERIALIZED_GLOBAL_STREAM_NAME, nil).serializable_hash
+          collection << build_event_record_hash(element, SERIALIZED_GLOBAL_STREAM_NAME, nil)
         end
 
         unless stream.global?
-          collection << build_event_record(element, stream.name, position).serializable_hash
+          collection << build_event_record_hash(element, stream.name, position)
         end
         collection
       end
@@ -98,24 +109,15 @@ module RailsEventStoreDynamoid
       self
     end
 
-    def build_event_instance(dynamoid_record)
-      RubyEventStore::SerializedRecord.new(
-        event_id:   dynamoid_record.id,
-        metadata:   dynamoid_record.meta,
-        data:       dynamoid_record.data,
-        event_type: dynamoid_record.event_type,
-      )
-    end
-
-    def build_event_record(serialized_record, stream, position)
-      Event.new(
-        id:   serialized_record.event_id,
+    def build_event_record_hash(serialized_record, stream, position)
+      {
+        id:         serialized_record.event_id,
         stream:     stream,
         position:   position,
         data:       serialized_record.data,
         meta:       serialized_record.metadata,
         event_type: serialized_record.event_type
-      )
+      }
     end
 
     def build_event_entity(record)
