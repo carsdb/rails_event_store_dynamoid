@@ -5,8 +5,10 @@ module RailsEventStoreDynamoid
     SERIALIZED_GLOBAL_STREAM_NAME = "all".freeze
 
     attr_reader :adapter
+
     def initialize(adapter: ::RailsEventStoreDynamoid::Event)
       @adapter = adapter
+      @repo_reader = EventRepositoryReader.new
     end
 
     def create(event, stream_name)
@@ -21,7 +23,7 @@ module RailsEventStoreDynamoid
     end
 
     def read(spec)
-      adapter.read(spec)
+      @repo_reader.read(spec)
     end
 
     def append_to_stream(events, stream, expected_version)
@@ -53,15 +55,11 @@ module RailsEventStoreDynamoid
     end
 
     def has_event?(event_id)
-      adapter.where(id: event_id).count > 0
+      @repo_reader.has_event? event_id
     end
 
     def last_stream_event(stream)
-      record = adapter
-        .where(stream: stream.name)
-        .scan_index_forward(false)
-        .first
-      build_event_instance(record)
+      @repo_reader.last_stream_event(stream)
     end
 
     def read_events_forward(stream_name, start_event_id, count)
@@ -76,11 +74,7 @@ module RailsEventStoreDynamoid
     end
 
     def read_event(event_id)
-      if record = adapter.where(id: event_id).first
-        build_event_instance(record)
-      else
-        raise RubyEventStore::EventNotFound.new(event_id)
-      end
+      @repo_reader.read_event(event_id)
     end
 
     private
