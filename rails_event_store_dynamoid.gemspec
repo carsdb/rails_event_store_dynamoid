@@ -7,11 +7,11 @@ Gem::Specification.new do |spec|
   spec.name          = "rails_event_store_dynamoid"
   spec.version       = RailsEventStoreDynamoid::VERSION
   spec.authors       = ["mmhan"]
-  spec.email         = ["mike.myatminhan@gmail.com"]
+  spec.email         = ["mmhan2u@gmail.com"]
 
   spec.summary       = %q{Dyanmoid repository for RailsEventStore.}
   spec.description   = %q{Repository implementaion of RailsEventStore for Amazon Web Services' DynamoDB.}
-  spec.homepage      = "TODO: Put your gem's website or public repo URL here."
+  spec.homepage      = "https://github.com/carsdb/rails_event_store_dynamoid"
   spec.license       = "MIT"
 
   # Prevent pushing this gem to RubyGems.org by setting 'allowed_push_host', or
